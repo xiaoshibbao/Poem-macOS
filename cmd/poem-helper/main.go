@@ -5,6 +5,7 @@
 //
 //	poem-helper.exe launch <plan.json>   start the game, report its PID, wait for exit
 //	poem-helper.exe attach <pid> <dll>   load a module into a running game
+//	poem-helper.exe registry <values.json> write registry values in the prefix
 package main
 
 import (
@@ -33,7 +34,7 @@ func fail(format string, args ...any) int {
 
 func main() {
 	if len(os.Args) < 2 {
-		os.Exit(fail("usage: poem-helper.exe launch <plan.json> | attach <pid> <dll>"))
+		os.Exit(fail("usage: poem-helper.exe launch <plan.json> | attach <pid> <dll> | registry <values.json>"))
 	}
 	switch os.Args[1] {
 	case "launch":
@@ -53,6 +54,22 @@ func main() {
 			os.Exit(fail("%v", err))
 		}
 		emit(helperproto.Event{Event: helperproto.EventStarted, PID: uint32(pid)})
+	case "registry":
+		if len(os.Args) != 3 {
+			os.Exit(fail("registry 需要文件路径"))
+		}
+		b, err := os.ReadFile(os.Args[2])
+		if err != nil {
+			os.Exit(fail("%v", err))
+		}
+		var values []helperproto.RegValue
+		if err := json.Unmarshal(b, &values); err != nil {
+			os.Exit(fail("注册表数据格式错误：%v", err))
+		}
+		if err := applyRegistry(values); err != nil {
+			os.Exit(fail("%v", err))
+		}
+		emit(helperproto.Event{Event: helperproto.EventStarted})
 	default:
 		os.Exit(fail("未知命令：%s", os.Args[1]))
 	}
@@ -66,6 +83,9 @@ func launch(planPath string) int {
 	var plan helperproto.Plan
 	if err := json.Unmarshal(b, &plan); err != nil {
 		return fail("启动计划格式错误：%v", err)
+	}
+	if err := applyRegistry(plan.Registry); err != nil {
+		return fail("写入 Wine 注册表失败：%v", err)
 	}
 	if plan.TrustCert != "" {
 		if err := installTrust(plan.TrustCert); err != nil {

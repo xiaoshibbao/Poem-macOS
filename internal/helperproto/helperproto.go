@@ -15,6 +15,26 @@ type Plan struct {
 	TrustCert string `json:"trustCert"`
 	// BlurFPS > 0 publishes the de-blur module's shared configuration.
 	BlurFPS int `json:"blurFPS"`
+	// Registry is written before the game starts.
+	Registry []RegValue `json:"registry"`
+}
+
+// Registry value kinds.
+const (
+	RegString = "string"
+	RegDWord  = "dword"
+	RegBinary = "binary"
+	RegDelete = "delete" // remove the value if present
+)
+
+// RegValue is one value under HKCU or HKLM. Key starts with HKCU\ or HKLM\.
+type RegValue struct {
+	Key    string `json:"key"`
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`
+	String string `json:"string,omitempty"`
+	DWord  uint32 `json:"dword,omitempty"`
+	Binary []byte `json:"binary,omitempty"`
 }
 
 // Event kinds.

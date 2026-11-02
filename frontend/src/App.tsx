@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowDownToLine, ArrowUpRight, Check, ChevronDown, CircleAlert, Clock3, CopyPlus, Cpu, Eye, FolderOpen, Gamepad2, Gauge, Globe2, House, Languages, LoaderCircle, Package, Play, RefreshCw, RotateCcw, Smartphone, X } from 'lucide-react'
-import { api, defaults, errorMessage, type Environment, type Settings, type Status, type LuaStatus } from './api'
+import { ArrowDownToLine, ArrowUpRight, Check, ChevronDown, CircleAlert, Clock3, CopyPlus, Cpu, Download, Eye, FolderOpen, Gamepad2, Gauge, Globe2, House, Languages, LoaderCircle, Package, Play, RefreshCw, RotateCcw, Smartphone, X } from 'lucide-react'
+import { api, defaults, errorMessage, type Environment, type InstallProgress, type Settings, type Status, type LuaStatus } from './api'
 import { FeatureCard, OptionRow, SelectionTrack, Switch } from './components'
 import { VERSION, fpsPresets, keyName, languageNames, serverLabels, serverMode, servers, type ServerMode, type Tab } from './constants'
 
@@ -21,6 +21,8 @@ export function App() {
  const [luaResult, setLuaResult] = useState<LuaStatus | null>(null)
  const [env, setEnv] = useState<Environment | null>(null)
  const [envOpen, setEnvOpen] = useState(false)
+ const [distro, setDistro] = useState('')
+ const [install, setInstall] = useState<InstallProgress | null>(null)
  // 收起面板时保留最后一个分类的内容，播完退出动画再卸载
  const [view, setView] = useState<Exclude<Tab, 'home'>>('game')
  const [closing, setClosing] = useState(false)
@@ -50,6 +52,18 @@ export function App() {
  }, [])
  const refreshEnv = () => api.environment().then(setEnv).catch(e => setNotice({ text: errorMessage(e), error: true }))
  useEffect(() => { if (tab === 'env' || !env) void refreshEnv() }, [tab])
+ useEffect(() => api.subscribeInstall(p => setInstall(p.stage ? p : null)), [])
+ async function installWine() {
+  const id = distro || env?.distributions[0]?.id || ''
+  setInstall({ stage: '正在准备…', fraction: -1 })
+  try {
+   const managed = await api.installWine(id)
+   revision.current++; setSettings(s => ({ ...s, winePath: managed.binary, winePrefix: managed.prefix })); setDirty(true)
+   setNotice({ text: '已安装 Poem 托管 Wine，并切换到托管容器' })
+   void refreshEnv()
+  } catch (e) { setNotice({ text: errorMessage(e), error: true }) }
+  finally { setInstall(null) }
+ }
  useEffect(() => {
   if (tab !== 'lua') return
   let live = true
@@ -116,7 +130,7 @@ export function App() {
   try { await saveQueue.current.catch(() => {}); const state = await api.start(settings); setStatus(state); setDirty(false); setNotice({ text: state.message }) } catch (e) { setNotice({ text: errorMessage(e), error: true }); try { setStatus(await api.status()) } catch { /* Keep the launch error visible if the bridge disconnects. */ } } finally { setBusy(false) }
  }
 
- const locked = !loaded || busy
+ const locked = !loaded || busy || !!install
  const retail = settings.loginChannel === 'official' || settings.loginChannel === 'bilibili'
  const wineReady = !!settings.winePath && !!settings.winePrefix
  const canLaunch = loaded && !busy && wineReady && !!settings.gamePath && (status.running === 0 || settings.multiInstance)
@@ -166,6 +180,14 @@ export function App() {
       <div className="panel-intro"><h2>运行环境</h2><p>游戏通过 Wine 运行，Poem 在同一个容器中启动游戏并加载模块</p></div>
       <div className="cols">
        <div className="col">
+        <div className={`master ${env?.managed.installed ? 'on' : ''}`}>
+         <span className="badge"><Download size={18} /></span>
+         <div><strong>Poem 托管 Wine</strong><small>{env?.managed.installed ? `已安装 ${env.distributions.find(d => d.id === env.managed.installed)?.name || env.managed.installed}${env.managed.dxmt ? ` · DXMT ${env.managed.dxmt}` : ''}` : '自动下载签名版 Wine 与 DXMT（Direct3D 11 → Metal），并创建独立容器'}</small></div>
+        </div>
+        {env && <div className="chips env-chips">{env.distributions.map(d => <button key={d.id} type="button" className={`chip ${(distro || env.managed.installed || env.distributions[0].id) === d.id ? 'active' : ''}`} disabled={locked || status.running > 0} onClick={() => setDistro(d.id)}>{d.name}</button>)}</div>}
+        {install ? <div className="install-progress" role="status"><span>{install.stage}</span><div className="bar"><i style={install.fraction >= 0 ? { width: `${Math.round(install.fraction * 100)}%` } : undefined} className={install.fraction < 0 ? 'indeterminate' : ''} /></div></div>
+         : <button className="secondary-button" disabled={locked || status.running > 0 || !env} onClick={() => void installWine()}><Download size={15} />{env?.managed.installed ? '重新安装 / 切换版本' : '下载并安装'}</button>}
+        <small className="hint">下载约 200 MB；游戏客户端放在任意目录均可，托管容器通过 Z: 盘访问它</small>
         <div>
          <span className="group-label">Wine 程序</span>
          {env && env.runtimes.length > 0 && <div className="chips env-chips">{env.runtimes.map(r => <button key={r.path} type="button" className={`chip ${settings.winePath === r.path ? 'active' : ''}`} title={r.path} disabled={locked || status.running > 0} onClick={() => change('winePath', r.path)}>{r.name}</button>)}</div>}
@@ -184,6 +206,12 @@ export function App() {
         </div>
        </div>
        <div className="col">
+        <div className="toggle-list">
+         <OptionRow title="Retina 模式" desc="以原生分辨率渲染，画面更清晰但更耗性能" control={<Switch checked={settings.retinaMode} onChange={v => change('retinaMode', v)} label="Retina 模式" disabled={locked} />} />
+         <OptionRow title="左 ⌘ 作为 Ctrl" desc="游戏中左 Command 键按 Ctrl 处理" control={<Switch checked={settings.leftCommandIsCtrl} onChange={v => change('leftCommandIsCtrl', v)} label="左 Command 作为 Ctrl" disabled={locked} />} />
+         <OptionRow title="Metal HUD" desc="在游戏画面上显示帧率与 GPU 信息" control={<Switch checked={settings.metalHUD} onChange={v => change('metalHUD', v)} label="Metal HUD" disabled={locked} />} />
+         <OptionRow title="MSync" desc="更高效的线程同步；遇到启动失败时关闭" control={<Switch checked={settings.wineMsync} onChange={v => change('wineMsync', v)} label="MSync" disabled={locked} />} />
+        </div>
         <div className="lua-toolbar"><strong>功能模块</strong><span className="toolbar-actions"><button className="secondary-button" disabled={!env} onClick={() => env && void api.openFolder(env.modulesDir)}><Package size={15} />打开模块文件夹</button><button className="icon-button" aria-label="重新检测" title="重新检测" onClick={() => void refreshEnv()}><RefreshCw size={15} /></button></span></div>
         <div className="lua-list">{env?.modules.map(m => <div className="lua-file module-row" key={m.name}>
          <span className={`module-state ${m.present ? 'on' : ''}`}>{m.present ? <Check size={14} /> : <X size={14} />}</span><div><strong>{m.name}</strong><small>{m.feature}</small></div>

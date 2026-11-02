@@ -263,3 +263,10 @@ select.input option{background:#18202b;color:var(--ink)}
 .module-row div{min-width:0}
 .module-state{flex-shrink:0;width:26px;height:26px;border-radius:13px;display:grid;place-content:center;background:rgba(216,88,76,.18);color:#f0a097}
 .module-state.on{background:rgba(92,196,140,.2);color:#8be0b0}
+.install-progress{display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--ink-2)}
+.install-progress .bar{height:6px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden}
+.install-progress .bar i{display:block;height:100%;background:var(--grad);border-radius:3px;transition:width .2s ease}
+.install-progress .bar i.indeterminate{width:35%;animation:install-slide 1.2s ease-in-out infinite}
+@keyframes install-slide{from{transform:translateX(-100%)}to{transform:translateX(290%)}}
+.toggle-list{display:flex;flex-direction:column;gap:2px}
+.toggle-list .row{padding:9px 0;border-bottom:1px solid var(--line)}

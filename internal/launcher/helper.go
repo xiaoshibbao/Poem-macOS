@@ -138,9 +138,9 @@ func (r *helperRun) wait() (uint32, error) {
 	return code, nil
 }
 
-// attachModule loads a module into a game started by this launcher.
-func attachModule(cfg wine.Config, helper string, pid uint32, module string, logf func(string, ...any)) error {
-	cmd := cfg.Command(helper, "attach", fmt.Sprint(pid), wine.WindowsPath(cfg.Prefix, module))
+// runOnce runs a short helper command and waits for its result.
+func runOnce(cfg wine.Config, helper string, logf func(string, ...any), args ...string) error {
+	cmd := cfg.Command(helper, args...)
 	cmd.Dir = filepath.Dir(helper)
 	events, err := readEvents(cmd, logf)
 	if err != nil {
@@ -159,4 +159,30 @@ func attachModule(cfg wine.Config, helper string, pid uint32, module string, log
 		failure = err
 	}
 	return failure
+}
+
+// attachModule loads a module into a game started by this launcher.
+func attachModule(cfg wine.Config, helper string, pid uint32, module string, logf func(string, ...any)) error {
+	return runOnce(cfg, helper, logf, "attach", fmt.Sprint(pid), wine.WindowsPath(cfg.Prefix, module))
+}
+
+// writeRegistry applies values in the prefix outside a launch.
+func writeRegistry(cfg wine.Config, helper string, values []helperproto.RegValue, logf func(string, ...any)) error {
+	b, err := json.Marshal(values)
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp("", "poem-registry-*.json")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	_, err = f.Write(b)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	return runOnce(cfg, helper, logf, "registry", wine.WindowsPath(cfg.Prefix, f.Name()))
 }

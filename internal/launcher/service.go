@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -44,6 +45,10 @@ type Settings struct {
 	WinePath           string   `json:"winePath"`
 	WinePrefix         string   `json:"winePrefix"`
 	WineEnv            string   `json:"wineEnv"`
+	RetinaMode         bool     `json:"retinaMode"`
+	LeftCommandIsCtrl  bool     `json:"leftCommandIsCtrl"`
+	MetalHUD           bool     `json:"metalHUD"`
+	WineMsync          bool     `json:"wineMsync"`
 }
 
 type Status struct {
@@ -60,6 +65,7 @@ type session struct {
 	luaLoaded bool
 	wine      wine.Config
 	blurFPS   int
+	helper    string
 }
 
 type Service struct {
@@ -69,6 +75,7 @@ type Service struct {
 	helper         []byte
 	mu             sync.Mutex
 	saveMu         sync.Mutex
+	installMu      sync.Mutex
 	sessions       map[uint32]*session
 }
 
@@ -91,7 +98,7 @@ func New(m Modules) *Service {
 }
 
 func defaults() Settings {
-	return Settings{ServerURL: "http://127.0.0.1:21000", ProxyEnabled: true, ProxyPort: 8080, RSAPatch: true, WebRedirect: true, TimeStop: true, UnlockFPS: true, MultiInstance: true, TimeStopKey: 0x20, TargetFPS: 120, Instances: 1}
+	return Settings{ServerURL: "http://127.0.0.1:21000", ProxyEnabled: true, ProxyPort: 8080, RSAPatch: true, WebRedirect: true, TimeStop: true, UnlockFPS: true, MultiInstance: true, TimeStopKey: 0x20, TargetFPS: 120, Instances: 1, LeftCommandIsCtrl: true}
 }
 
 func normalizeSettings(cfg Settings) Settings {
@@ -139,8 +146,12 @@ func (s *Service) LoadSettings() (Settings, error) {
 	return normalizeSettings(cfg), err
 }
 
-// First run: preselect the only detected runtime and prefix.
+// First run: preselect the managed Wine, else the only detected runtime and prefix.
 func autoWine(cfg Settings) Settings {
+	if m, err := managedWine(); err == nil && m.Installed() != "" {
+		cfg.WinePath, cfg.WinePrefix = m.Binary(), m.Prefix()
+		return cfg
+	}
 	if runtimes := wine.DetectRuntimes(); len(runtimes) > 0 {
 		cfg.WinePath = runtimes[0].Path
 	}
@@ -252,11 +263,21 @@ type ModuleState struct {
 
 // Environment is what the 运行环境 panel shows.
 type Environment struct {
-	Runtimes   []wine.Runtime `json:"runtimes"`
-	Prefixes   []wine.Prefix  `json:"prefixes"`
-	Modules    []ModuleState  `json:"modules"`
-	ModulesDir string         `json:"modulesDir"`
-	DataDir    string         `json:"dataDir"`
+	Runtimes      []wine.Runtime      `json:"runtimes"`
+	Prefixes      []wine.Prefix       `json:"prefixes"`
+	Modules       []ModuleState       `json:"modules"`
+	ModulesDir    string              `json:"modulesDir"`
+	DataDir       string              `json:"dataDir"`
+	Distributions []wine.Distribution `json:"distributions"`
+	Managed       ManagedState        `json:"managed"`
+}
+
+// ManagedState describes the Wine that Poem downloads itself.
+type ManagedState struct {
+	Installed string `json:"installed"` // distribution id, "" when not installed
+	Binary    string `json:"binary"`
+	Prefix    string `json:"prefix"`
+	DXMT      string `json:"dxmt"`
 }
 
 func (s *Service) GetEnvironment() (Environment, error) {
@@ -268,7 +289,13 @@ func (s *Service) GetEnvironment() (Environment, error) {
 	if err != nil {
 		return Environment{}, err
 	}
-	env := Environment{Runtimes: wine.DetectRuntimes(), Prefixes: wine.DetectPrefixes(), ModulesDir: modules, DataDir: data}
+	env := Environment{Runtimes: wine.DetectRuntimes(), Prefixes: wine.DetectPrefixes(), ModulesDir: modules, DataDir: data, Distributions: wine.Distributions}
+	m := wine.Managed{Dir: filepath.Join(data, "wine")}
+	if id := m.Installed(); id != "" {
+		env.Managed = ManagedState{Installed: id, Binary: m.Binary(), Prefix: m.Prefix(), DXMT: wine.DXMTVersion(m.Binary())}
+		env.Runtimes = append([]wine.Runtime{{Name: "Poem 托管", Path: m.Binary()}}, env.Runtimes...)
+		env.Prefixes = append([]wine.Prefix{{Name: "Poem 托管", Path: m.Prefix()}}, env.Prefixes...)
+	}
 	for _, m := range []struct{ name, feature string }{
 		{moduleProxy, "私服网络代理"},
 		{moduleFeatures, "时停 / 帧率 / 多开 / 移动端 UI"},
@@ -278,6 +305,50 @@ func (s *Service) GetEnvironment() (Environment, error) {
 		env.Modules = append(env.Modules, ModuleState{Name: m.name, Feature: m.feature, Present: err == nil && !info.IsDir() && info.Size() > 0})
 	}
 	return env, nil
+}
+
+func managedWine() (wine.Managed, error) {
+	dir, err := dataDir()
+	if err != nil {
+		return wine.Managed{}, err
+	}
+	return wine.Managed{Dir: filepath.Join(dir, "wine")}, nil
+}
+
+// InstallProgress is emitted as poem:install while InstallWine runs.
+type InstallProgress struct {
+	Stage    string  `json:"stage"`
+	Fraction float64 `json:"fraction"`
+}
+
+// InstallWine downloads a Wine build (with DXMT when supported) and creates the
+// managed prefix. It returns the managed binary and prefix to select.
+func (s *Service) InstallWine(id string) (ManagedState, error) {
+	if !s.installMu.TryLock() {
+		return ManagedState{}, errors.New("Wine 正在安装中")
+	}
+	defer s.installMu.Unlock()
+	m, err := managedWine()
+	if err != nil {
+		return ManagedState{}, err
+	}
+	s.mu.Lock()
+	for _, session := range s.sessions {
+		if session.wine.Prefix == m.Prefix() {
+			s.mu.Unlock()
+			return ManagedState{}, errors.New("请先退出使用 Poem 托管 Wine 的游戏")
+		}
+	}
+	s.mu.Unlock()
+	progress := func(stage string, fraction float64) {
+		application.Get().Event.Emit("poem:install", InstallProgress{stage, fraction})
+	}
+	if err := m.Install(context.Background(), wine.FindDistribution(id), progress); err != nil {
+		progress("", 0)
+		return ManagedState{}, err
+	}
+	progress("", 1)
+	return ManagedState{Installed: m.Installed(), Binary: m.Binary(), Prefix: m.Prefix(), DXMT: wine.DXMTVersion(m.Binary())}, nil
 }
 
 // Read the user-supplied modules once per launch so replacements take effect.
@@ -487,6 +558,24 @@ func (s *Service) Start(cfg Settings) (Status, error) {
 		}
 	}
 	logf := func(format string, args ...any) { writeLaunchLog(dir, format, args...) }
+	dxmt := wine.DXMTVersion(wineCfg.Binary) != ""
+	wineCfg.Env = compatEnvironment(cfg, wineCfg, dxmt)
+	firstInPrefix := true
+	for _, existing := range s.sessions {
+		firstInPrefix = firstInPrefix && existing.wine.Prefix != wineCfg.Prefix
+	}
+	if firstInPrefix {
+		if cfg.WineMsync {
+			// msync and esync cannot share a wineserver; let a previous one finish first.
+			wineCfg.WaitServer(15 * time.Second)
+		}
+		setAside(cfg.GamePath)
+		defer func() {
+			if len(s.sessions) == 0 {
+				restoreSetAside(cfg.GamePath)
+			}
+		}()
+	}
 	for n := 0; n < cfg.Instances; n++ {
 		sessionDir := filepath.Join(dir, "sessions", fmt.Sprintf("%d-%d", time.Now().UnixNano(), n))
 		plan := helperproto.Plan{Game: win(cfg.GamePath), Env: proxyRuntimeEnvironment(cfg.ProxyEnabled), BlurFPS: blurFPS}
@@ -523,6 +612,7 @@ func (s *Service) Start(cfg Settings) (Status, error) {
 			plan.Env[hookEnvWebTarget] = strings.TrimSpace(cfg.ServerURL)
 			plan.Late = append(plan.Late, win(hookPath))
 		}
+		plan.Registry = launchRegistry(cfg, port, dxmt)
 		var restore func() error
 		if featuresOn {
 			restore, err = stageConfig(filepath.Join(filepath.Dir(cfg.GamePath), "StarRail_Data", "config.ini"), cfg)
@@ -550,11 +640,14 @@ func (s *Service) Start(cfg Settings) (Status, error) {
 		if launchErr != nil {
 			logf("launch error: %v", launchErr)
 			stopProxy()
+			if len(s.sessions) == 0 {
+				s.afterLastGame(wineCfg, helper, cfg.GamePath, port > 0, logf)
+			}
 			return s.statusLocked(""), fmt.Errorf("启动失败：%w", launchErr)
 		}
 		pid := run.pid
 		logf("process resumed pid=%d", pid)
-		s.sessions[pid] = &session{port: port, channel: cfg.LoginChannel, game: cfg.GamePath, moduleDir: moduleDir, wine: wineCfg, blurFPS: blurFPS}
+		s.sessions[pid] = &session{port: port, channel: cfg.LoginChannel, game: cfg.GamePath, moduleDir: moduleDir, wine: wineCfg, blurFPS: blurFPS, helper: helper}
 		if cfg.LuaEnabled && len(enabledLuaScripts(cfg)) > 0 {
 			paths := enabledLuaScripts(cfg)
 			go func() {
@@ -591,12 +684,17 @@ func (s *Service) monitor(pid uint32, run *helperRun, proxy *netproxy.Proxy, ses
 		writeLaunchLog(dir, "Lua final pid=%d job=%s state=%s message=%s", pid, luaState.ID, luaState.State, luaState.Message)
 	}
 	s.mu.Lock()
+	ended := s.sessions[pid]
 	delete(s.sessions, pid)
-	shared := false
+	shared, prefixBusy := false, false
 	for _, other := range s.sessions {
 		shared = shared || other.moduleDir == moduleDir
+		prefixBusy = prefixBusy || (ended != nil && other.wine.Prefix == ended.wine.Prefix)
 	}
 	s.mu.Unlock()
+	if ended != nil && !prefixBusy {
+		s.afterLastGame(ended.wine, ended.helper, ended.game, proxy != nil, func(format string, args ...any) { writeLaunchLog(dir, format, args...) })
+	}
 	if !shared {
 		cleanupRuntimeModules(moduleDir)
 	}
@@ -617,4 +715,14 @@ func (s *Service) monitor(pid uint32, run *helperRun, proxy *netproxy.Proxy, ses
 	status := s.statusLocked(exitMessage)
 	s.mu.Unlock()
 	application.Get().Event.Emit("poem:status", status)
+}
+
+// afterLastGame undoes per-session changes once no Poem game uses the prefix.
+func (s *Service) afterLastGame(w wine.Config, helper, game string, proxied bool, logf func(string, ...any)) {
+	restoreSetAside(game)
+	if proxied {
+		if err := writeRegistry(w, helper, proxyOffRegistry(), logf); err != nil {
+			logf("proxy registry reset failed: %v", err)
+		}
+	}
 }
