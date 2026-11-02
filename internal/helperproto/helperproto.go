@@ -6,11 +6,14 @@ package helperproto
 
 // Plan describes one game launch.
 type Plan struct {
-	Game  string            `json:"game"`
-	Args  []string          `json:"args"`
-	Early []string          `json:"early"` // loaded before the main thread resumes
-	Late  []string          `json:"late"`  // loaded after the Unity window is ready
-	Env   map[string]string `json:"env"`
+	Game string   `json:"game"`
+	Args []string `json:"args"`
+	// Wrapper, when set, is jadeite.exe: the game is started through it with
+	// Args and no modules are loaded (Early, Late and BlurFPS must be empty).
+	Wrapper string            `json:"wrapper"`
+	Early   []string          `json:"early"` // loaded before the main thread resumes
+	Late    []string          `json:"late"`  // loaded after the Unity window is ready
+	Env     map[string]string `json:"env"`
 	// TrustCert is a PEM root certificate added to the prefix's
 	// CurrentUser\Root store before the game starts. Empty skips it.
 	TrustCert string `json:"trustCert"`

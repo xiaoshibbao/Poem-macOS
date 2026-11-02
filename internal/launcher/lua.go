@@ -61,7 +61,9 @@ func (s *Service) GetLuaSessions() []LuaSessionStatus {
 	defer s.mu.Unlock()
 	result := []LuaSessionStatus{}
 	for pid, session := range s.sessions {
-		result = append(result, readLuaStatus(pid, session.moduleDir))
+		if !session.retail {
+			result = append(result, readLuaStatus(pid, session.moduleDir))
+		}
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].PID < result[j].PID })
 	return result
@@ -131,7 +133,7 @@ func (s *Service) queueLua(pid uint32, paths []string, automatic bool) (LuaSessi
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	session, ok := s.sessions[pid]
-	if !ok {
+	if !ok || session.retail {
 		return LuaSessionStatus{}, fmt.Errorf("请选择当前由 Poem 启动的游戏窗口")
 	}
 	dir := session.moduleDir

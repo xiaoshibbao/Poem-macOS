@@ -47,6 +47,15 @@ type Process struct {
 // Pid returns the OS process id.
 func (p *Process) Pid() uint32 { return p.pid }
 
+// Open takes ownership of an existing process for waiting and its exit code.
+func Open(pid uint32) (*Process, error) {
+	handle, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		return nil, err
+	}
+	return &Process{handle: handle, pid: pid}, nil
+}
+
 // Wait blocks until the process exits.
 func (p *Process) Wait() {
 	if p.handle == 0 {

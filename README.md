@@ -27,11 +27,11 @@ macOS 上没有原生的 Windows 版游戏，所以游戏通过 **Wine**（Cross
 | 分类 | 内容 |
 | --- | --- |
 | 运行环境 | 一键下载 Poem 托管的签名版 Wine 与 [DXMT](https://github.com/3Shain/dxmt)（Direct3D 11 → Metal），并创建独立容器；也可选择 CrossOver / Whisky / GPTK / Homebrew 的 Wine 和已有容器。通过 [Jadeite](https://codeberg.org/mkrsym1/jadeite) 兼容层让游戏在 Wine 中启动。提供 Retina 模式、左 ⌘ 作为 Ctrl、Metal HUD、MSync 与额外环境变量。 |
-| 登录渠道 | 私服 / 官服 / B服。官服和 B服共用同一个正式国服客户端目录，启动时切换 `config.ini` 的渠道字段；B服首次使用需下载官方渠道组件（约 85 MB）。 |
-| 游戏功能 | 战斗时停、帧率上限、解除多开、移动端 UI、角色去虚化，下次启动游戏时生效。 |
+| 登录渠道 | 私服 / 官服 / B服。官服和 B服共用同一个正式国服客户端目录，启动时切换 `config.ini` 的渠道字段；B服首次使用需下载官方渠道组件（约 85 MB）。官服 / B服通过 `jadeite.exe` 原样启动，不加载任何 Poem 模块。 |
+| 游戏功能 | 仅私服。战斗时停、帧率上限、解除多开、移动端 UI、角色去虚化，下次启动游戏时生效。 |
 | 网络代理 | 仅私服。把游戏流量转发到本地服务器、预设服务器或自定义地址；可选 RSA 公钥替换和游戏内网页重定向。 |
 | 游戏语言 | 分别设置文字和语音语言；首次修改前自动备份，可一键恢复。 |
-| Lua 脚本 | 添加本地 UTF-8 `.lua` 文件，游戏进入可游玩场景后按顺序自动执行，也可对运行中的游戏手动重新执行。 |
+| Lua 脚本 | 仅私服。添加本地 UTF-8 `.lua` 文件，游戏进入可游玩场景后按顺序自动执行，也可对运行中的游戏手动重新执行。 |
 
 ## 使用
 
@@ -76,7 +76,10 @@ macOS 上没有原生的 Windows 版游戏，所以游戏通过 **Wine**（Cross
 
 - 游戏通过 Wine 启动，需要先配置运行环境。
 - 不包含 Windows 专属的诊断与网络功能：WER 崩溃转储、线程跟踪、控制台记录、VPN 直连路由和系统代理入口桥接（NetworkEntry）。
-- 游戏自带的内核驱动无法在 Wine 中加载，所以默认启用 Jadeite 兼容层。首次启动时，Poem 会从 Jadeite 官方发布页下载 v4.1.0（不随本仓库分发），在加载其他模块之前先注入 `game_payload.dll`，并按 Jadeite 的建议附加 `-disable-gpu-skinning` 启动参数。可以在「运行环境」中关闭。
+- 游戏自带的内核驱动无法在 Wine 中加载，所以默认启用 Jadeite 兼容层。首次启动时，Poem 会从 Jadeite 官方发布页下载 v4.1.0（不随本仓库分发），并按 Jadeite 的建议附加 `-disable-gpu-skinning` 启动参数：
+  - 官服 / B服：与 Jadeite 原本的用法一致，由 `jadeite.exe` 启动游戏，Poem 不注入任何模块，只负责语言、渠道与运行环境。
+  - 私服：由 `poem-helper.exe` 挂起创建游戏，先注入 `game_payload.dll`，再注入 Poem 的功能模块。
+  - 可以在「运行环境」中关闭 Jadeite。
 
 ## 构建
 

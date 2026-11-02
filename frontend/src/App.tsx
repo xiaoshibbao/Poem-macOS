@@ -133,18 +133,19 @@ export function App() {
  const locked = !loaded || busy || !!install
  const retail = settings.loginChannel === 'official' || settings.loginChannel === 'bilibili'
  const wineReady = !!settings.winePath && !!settings.winePrefix
- const canLaunch = loaded && !busy && wineReady && !!settings.gamePath && (status.running === 0 || settings.multiInstance)
+ const multi = !retail && settings.multiInstance
+ const canLaunch = loaded && !busy && wineReady && !!settings.gamePath && (status.running === 0 || multi)
  const pathLabel = settings.gamePath ? settings.gamePath.replace(/\\/g, '/').split('/').slice(-2).join(' / ') : '尚未选择 StarRail.exe'
  const mode = serverMode(settings.serverURL)
- const launchLabel = busy ? '正在启动…' : !wineReady ? '请先设置 Wine' : status.running && settings.multiInstance ? '再开一个' : status.running ? '游戏运行中' : '启动游戏'
+ const launchLabel = busy ? '正在启动…' : !wineReady ? '请先设置 Wine' : status.running && multi ? '再开一个' : status.running ? '游戏运行中' : '启动游戏'
  const luaEnabledCount = settings.luaScripts.filter(path => !settings.luaDisabledScripts.includes(path)).length
  const tabs: { id: Tab; label: string; icon: ReactNode; state?: boolean }[] = [
   { id: 'home', label: '首页', icon: <House size={16} /> },
   { id: 'env', label: '运行环境', icon: <Cpu size={16} />, state: wineReady },
-  { id: 'game', label: '游戏功能', icon: <Gamepad2 size={16} /> },
-  ...(retail ? [] : [{ id: 'proxy' as const, label: '网络代理', icon: <Globe2 size={16} />, state: settings.proxyEnabled }]),
+  // 官服 / B服通过 jadeite.exe 原样启动，不加载 Poem 的游戏功能、代理与 Lua
+  ...(retail ? [] : [{ id: 'game' as const, label: '游戏功能', icon: <Gamepad2 size={16} /> }, { id: 'proxy' as const, label: '网络代理', icon: <Globe2 size={16} />, state: settings.proxyEnabled }]),
   { id: 'language', label: '语言', icon: <Languages size={16} /> },
-  { id: 'lua', label: 'Lua', icon: <Play size={16} /> },
+  ...(retail ? [] : [{ id: 'lua' as const, label: 'Lua', icon: <Play size={16} /> }]),
  ]
  const panelOpen = tab !== 'home'
  const panelShown = panelOpen || closing
@@ -207,7 +208,7 @@ export function App() {
        </div>
        <div className="col">
         <div className="toggle-list">
-         <OptionRow title="Jadeite 兼容层" desc={env?.jadeite ? `v${env.jadeite} 已就绪 · 让游戏在 Wine 中正常启动` : '首次启动时从官方发布页下载 · 让游戏在 Wine 中正常启动'} control={<Switch checked={settings.useJadeite} onChange={v => change('useJadeite', v)} label="Jadeite 兼容层" disabled={locked} />} />
+         <OptionRow title="Jadeite 兼容层" desc={`${env?.jadeite ? `v${env.jadeite} 已就绪` : '首次启动时从官方发布页下载'} · 官服 / B服通过 jadeite.exe 原样启动，私服在 Poem 模块之前注入`} control={<Switch checked={settings.useJadeite} onChange={v => change('useJadeite', v)} label="Jadeite 兼容层" disabled={locked} />} />
          <OptionRow title="Retina 模式" desc="以原生分辨率渲染，画面更清晰但更耗性能" control={<Switch checked={settings.retinaMode} onChange={v => change('retinaMode', v)} label="Retina 模式" disabled={locked} />} />
          <OptionRow title="左 ⌘ 作为 Ctrl" desc="游戏中左 Command 键按 Ctrl 处理" control={<Switch checked={settings.leftCommandIsCtrl} onChange={v => change('leftCommandIsCtrl', v)} label="左 Command 作为 Ctrl" disabled={locked} />} />
          <OptionRow title="Metal HUD" desc="在游戏画面上显示帧率与 GPU 信息" control={<Switch checked={settings.metalHUD} onChange={v => change('metalHUD', v)} label="Metal HUD" disabled={locked} />} />
@@ -223,7 +224,7 @@ export function App() {
       </div>
      </>}
 
-     {view === 'game' && <>
+     {!retail && view === 'game' && <>
       <div className="panel-intro"><h2>游戏功能</h2><p>下次启动游戏时生效</p></div>
       <div className="feature-grid">
        <FeatureCard wide icon={<Clock3 size={18} />} title="战斗时停" desc="按住快捷键暂停战斗，松开恢复" checked={settings.timeStop} onChange={v => change('timeStop', v)} disabled={locked}>
@@ -275,7 +276,7 @@ export function App() {
       </fieldset>
      </>}
 
-     {view === 'lua' && <>
+     {!retail && view === 'lua' && <>
       <div className="panel-intro"><h2>本地 Lua 脚本</h2><p>游戏启动并进入场景后自动执行，脚本不经过服务器</p></div>
       <div className="cols">
       <div className="col">
@@ -329,7 +330,7 @@ export function App() {
     <div className="path-copy"><small>游戏路径</small><span title={settings.gamePath}>{pathLabel}</span></div>
     <button className="icon-button" title="打开游戏目录" aria-label="打开游戏目录" disabled={!settings.gamePath || locked} onClick={() => void api.openFolder(settings.gamePath.replace(/[\\/][^\\/]+$/, ''))}><ArrowUpRight size={16} /></button>
    </div>
-   <SelectionTrack className="segmented" role="radiogroup" aria-label="登录渠道" active={settings.loginChannel || 'private'}>{([{id:'private',name:'私服'},{id:'official',name:'官服'},{id:'bilibili',name:'B服'}] as const).map(c => <button key={c.id} role="radio" aria-checked={(settings.loginChannel || 'private') === c.id} disabled={locked || status.running > 0} onClick={() => { change('loginChannel', c.id); if (c.id !== 'private' && tab === 'proxy') selectTab('game') }}>{c.name}</button>)}</SelectionTrack>
+   <SelectionTrack className="segmented" role="radiogroup" aria-label="登录渠道" active={settings.loginChannel || 'private'}>{([{id:'private',name:'私服'},{id:'official',name:'官服'},{id:'bilibili',name:'B服'}] as const).map(c => <button key={c.id} role="radio" aria-checked={(settings.loginChannel || 'private') === c.id} disabled={locked || status.running > 0} onClick={() => { change('loginChannel', c.id); if (c.id !== 'private' && (tab === 'proxy' || tab === 'game' || tab === 'lua')) selectTab('home') }}>{c.name}</button>)}</SelectionTrack>
    {settings.loginChannel === 'bilibili' && <button className="dock-icon" title="下载 / 更新 B服组件（约 85 MB，启动时自动安装）" aria-label="下载或更新 B服组件" disabled={locked || status.running > 0} onClick={async () => { setBusy(true); setNotice({text:'正在从米哈游下载 B服组件…'}); try {setNotice({text:await api.prepareBilibili()})} catch(e) {setNotice({text:errorMessage(e),error:true})} finally {setBusy(false)} }}><ArrowDownToLine size={17} /></button>}
    <button className="launch-button" onClick={() => void start()} disabled={!canLaunch}>{busy ? <LoaderCircle size={19} className="spin" /> : <Play size={18} fill="currentColor" />}<span>{launchLabel}</span></button>
   </footer>

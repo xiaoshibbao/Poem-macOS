@@ -101,7 +101,10 @@ func launch(planPath string) int {
 		defer blur.close()
 	}
 	var proc *injector.Process
-	if len(plan.Late) > 0 {
+	if plan.Wrapper != "" {
+		logf("wrapper=%s", plan.Wrapper)
+		proc, err = launchWrapped(plan)
+	} else if len(plan.Late) > 0 {
 		logf("staged early=%v late=%v", plan.Early, plan.Late)
 		proc, err = injector.LaunchStaged(plan.Game, plan.Early, plan.Late, plan.Env, plan.Args...)
 	} else {

@@ -67,6 +67,7 @@ type session struct {
 	wine      wine.Config
 	blurFPS   int
 	helper    string
+	retail    bool // started unmodified; Lua is unavailable
 }
 
 type Service struct {
@@ -468,6 +469,11 @@ func (s *Service) Start(cfg Settings) (Status, error) {
 	cfg = normalizeSettings(cfg)
 	savedSettings := cfg
 	cfg, retail := channelRuntimeSettings(cfg)
+	if retail {
+		// Official and Bilibili clients run unmodified through jadeite.exe.
+		cfg.TimeStop, cfg.UnlockFPS, cfg.MultiInstance, cfg.TouchUI = false, false, false, false
+		cfg.RemoveBlur, cfg.LuaEnabled = false, false
+	}
 	if err := validate(cfg, true); err != nil {
 		return Status{}, err
 	}
@@ -652,7 +658,10 @@ func (s *Service) Start(cfg Settings) (Status, error) {
 		if len(plan.Early) == 0 {
 			plan.Early, plan.Late = plan.Late, nil
 		}
-		if payload != "" {
+		if payload != "" && retail {
+			plan.Wrapper = win(wine.JadeiteLauncher(payload))
+			plan.Args = wine.JadeiteArgs
+		} else if payload != "" {
 			// Jadeite must patch the game before any other module initialises.
 			plan.Early = append([]string{win(payload)}, plan.Early...)
 			plan.Args = wine.JadeiteArgs
@@ -673,7 +682,7 @@ func (s *Service) Start(cfg Settings) (Status, error) {
 		}
 		pid := run.pid
 		logf("process resumed pid=%d", pid)
-		s.sessions[pid] = &session{port: port, channel: cfg.LoginChannel, game: cfg.GamePath, moduleDir: moduleDir, wine: wineCfg, blurFPS: blurFPS, helper: helper}
+		s.sessions[pid] = &session{port: port, channel: cfg.LoginChannel, game: cfg.GamePath, moduleDir: moduleDir, wine: wineCfg, blurFPS: blurFPS, helper: helper, retail: retail}
 		if cfg.LuaEnabled && len(enabledLuaScripts(cfg)) > 0 {
 			paths := enabledLuaScripts(cfg)
 			go func() {

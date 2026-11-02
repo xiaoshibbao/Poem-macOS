@@ -10,9 +10,10 @@ import (
 )
 
 // Jadeite (https://codeberg.org/mkrsym1/jadeite) makes the game start under
-// Wine, where its kernel anti-cheat driver cannot load. Poem injects its
-// game_payload.dll first, before every other module, as jadeite's own
-// launcher does. It is downloaded from the official release, never bundled.
+// Wine, where its kernel anti-cheat driver cannot load. Private-server
+// launches inject its game_payload.dll before Poem's modules; official and
+// Bilibili launches go through jadeite.exe unchanged. It is downloaded from
+// the official release, never bundled.
 const (
 	JadeiteVersion = "4.1.0"
 	jadeiteURL     = "https://codeberg.org/mkrsym1/jadeite/releases/download/v4.1.0/v4.1.0.zip"
@@ -34,6 +35,11 @@ func JadeitePayload(dir string) string {
 		return ""
 	}
 	return path
+}
+
+// JadeiteLauncher returns jadeite.exe next to the payload.
+func JadeiteLauncher(payload string) string {
+	return filepath.Join(filepath.Dir(payload), "jadeite.exe")
 }
 
 // EnsureJadeite downloads jadeite into dir when the expected version is missing.
