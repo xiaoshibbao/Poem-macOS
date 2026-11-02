@@ -1,0 +1,9 @@
+# 构建产物与预编译模块不入库
+/dist/
+/frontend/node_modules/
+/frontend/dist/
+/assets/*.exe
+/assets/*.dll
+/assets/*.lib
+/assets/*.pdb
+.DS_Store
