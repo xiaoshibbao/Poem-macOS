@@ -103,10 +103,10 @@ func launch(planPath string) int {
 	var proc *injector.Process
 	if len(plan.Late) > 0 {
 		logf("staged early=%v late=%v", plan.Early, plan.Late)
-		proc, err = injector.LaunchStaged(plan.Game, plan.Early, plan.Late, plan.Env)
+		proc, err = injector.LaunchStaged(plan.Game, plan.Early, plan.Late, plan.Env, plan.Args...)
 	} else {
 		logf("modules=%v", plan.Early)
-		proc, err = injector.LaunchWithDLLs(plan.Game, plan.Early, plan.Env)
+		proc, err = injector.LaunchWithDLLs(plan.Game, plan.Early, plan.Env, plan.Args...)
 	}
 	if err != nil {
 		return fail("%v", err)

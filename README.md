@@ -26,7 +26,7 @@ macOS 上没有原生的 Windows 版游戏，所以游戏通过 **Wine**（Cross
 
 | 分类 | 内容 |
 | --- | --- |
-| 运行环境 | 一键下载 Poem 托管的签名版 Wine 与 [DXMT](https://github.com/3Shain/dxmt)（Direct3D 11 → Metal），并创建独立容器；也可选择 CrossOver / Whisky / GPTK / Homebrew 的 Wine 和已有容器。提供 Retina 模式、左 ⌘ 作为 Ctrl、Metal HUD、MSync 与额外环境变量。 |
+| 运行环境 | 一键下载 Poem 托管的签名版 Wine 与 [DXMT](https://github.com/3Shain/dxmt)（Direct3D 11 → Metal），并创建独立容器；也可选择 CrossOver / Whisky / GPTK / Homebrew 的 Wine 和已有容器。通过 [Jadeite](https://codeberg.org/mkrsym1/jadeite) 兼容层让游戏在 Wine 中启动。提供 Retina 模式、左 ⌘ 作为 Ctrl、Metal HUD、MSync 与额外环境变量。 |
 | 登录渠道 | 私服 / 官服 / B服。官服和 B服共用同一个正式国服客户端目录，启动时切换 `config.ini` 的渠道字段；B服首次使用需下载官方渠道组件（约 85 MB）。 |
 | 游戏功能 | 战斗时停、帧率上限、解除多开、移动端 UI、角色去虚化，下次启动游戏时生效。 |
 | 网络代理 | 仅私服。把游戏流量转发到本地服务器、预设服务器或自定义地址；可选 RSA 公钥替换和游戏内网页重定向。 |
@@ -63,7 +63,7 @@ macOS 上没有原生的 Windows 版游戏，所以游戏通过 **Wine**（Cross
 
 - 设置、代理证书、渠道备份、语言备份和 `launch.log` 位于 `~/Library/Application Support/Poem/`。
 - 每次启动的运行时模块释放在系统临时目录 `Poem-runtime-*`，游戏退出后清理。
-- 托管 Wine、DXMT 与托管容器位于 `~/Library/Application Support/Poem/wine/`。
+- 托管 Wine、DXMT 与托管容器位于 `~/Library/Application Support/Poem/wine/`，Jadeite 位于 `compat/jadeite/`。
 - 启用代理时，Poem Local Proxy 根证书只写入所选 Wine 容器的受信任根证书存储，不会改动 macOS 钥匙串。
 
 ### 每次启动时对容器的调整
@@ -76,7 +76,7 @@ macOS 上没有原生的 Windows 版游戏，所以游戏通过 **Wine**（Cross
 
 - 游戏通过 Wine 启动，需要先配置运行环境。
 - 不包含 Windows 专属的诊断与网络功能：WER 崩溃转储、线程跟踪、控制台记录、VPN 直连路由和系统代理入口桥接（NetworkEntry）。
-- 不包含任何反作弊绕过组件（例如 Jadeite / `game_payload.dll`）。游戏客户端能否在 Wine 中启动，取决于客户端本身与 Wine 环境。
+- 游戏自带的内核驱动无法在 Wine 中加载，所以默认启用 Jadeite 兼容层。首次启动时，Poem 会从 Jadeite 官方发布页下载 v4.1.0（不随本仓库分发），在加载其他模块之前先注入 `game_payload.dll`，并按 Jadeite 的建议附加 `-disable-gpu-skinning` 启动参数。可以在「运行环境」中关闭。
 
 ## 构建
 
@@ -119,7 +119,7 @@ cd frontend && pnpm install && pnpm dev
 
 ## 致谢与来源
 
-macOS 运行环境部分（托管 Wine、DXMT 放置方式、注册表与环境变量）参考了 Evernight-Launcher 的实现思路，但没有使用它的代码。Wine 构建来自 [yaagl/anime-game-wine](https://github.com/yaagl/anime-game-wine) 与 [dawn-winery](https://github.com/dawn-winery/dawn-signed)，DXMT 来自 [3Shain/dxmt](https://github.com/3Shain/dxmt)，都在运行时从各自的发布页下载。
+macOS 运行环境部分（托管 Wine、DXMT 放置方式、注册表与环境变量）参考了 Evernight-Launcher 的实现思路，但没有使用它的代码。Wine 构建来自 [yaagl/anime-game-wine](https://github.com/yaagl/anime-game-wine) 与 [dawn-winery](https://github.com/dawn-winery/dawn-signed)，DXMT 来自 [3Shain/dxmt](https://github.com/3Shain/dxmt)，Jadeite 来自 [mkrsym1/jadeite](https://codeberg.org/mkrsym1/jadeite)，都在运行时从各自的发布页下载。
 
 本项目移植自 Windows 版 Poem Launcher。其中部分代码来自 [Cyrene Launcher](https://github.com/Mar7thDev/CyreneLauncher)（Mar7thDev），Cyrene Launcher 的上游是 Firefly Shelter 的 Firefly Launcher。两者均以 MIT License 发布，原始版权声明见 [LICENSE](LICENSE)。
 

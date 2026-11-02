@@ -7,6 +7,7 @@ package helperproto
 // Plan describes one game launch.
 type Plan struct {
 	Game  string            `json:"game"`
+	Args  []string          `json:"args"`
 	Early []string          `json:"early"` // loaded before the main thread resumes
 	Late  []string          `json:"late"`  // loaded after the Unity window is ready
 	Env   map[string]string `json:"env"`

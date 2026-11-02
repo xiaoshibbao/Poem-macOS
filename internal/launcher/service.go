@@ -49,6 +49,7 @@ type Settings struct {
 	LeftCommandIsCtrl  bool     `json:"leftCommandIsCtrl"`
 	MetalHUD           bool     `json:"metalHUD"`
 	WineMsync          bool     `json:"wineMsync"`
+	UseJadeite         bool     `json:"useJadeite"`
 }
 
 type Status struct {
@@ -98,7 +99,7 @@ func New(m Modules) *Service {
 }
 
 func defaults() Settings {
-	return Settings{ServerURL: "http://127.0.0.1:21000", ProxyEnabled: true, ProxyPort: 8080, RSAPatch: true, WebRedirect: true, TimeStop: true, UnlockFPS: true, MultiInstance: true, TimeStopKey: 0x20, TargetFPS: 120, Instances: 1, LeftCommandIsCtrl: true}
+	return Settings{ServerURL: "http://127.0.0.1:21000", ProxyEnabled: true, ProxyPort: 8080, RSAPatch: true, WebRedirect: true, TimeStop: true, UnlockFPS: true, MultiInstance: true, TimeStopKey: 0x20, TargetFPS: 120, Instances: 1, LeftCommandIsCtrl: true, UseJadeite: true}
 }
 
 func normalizeSettings(cfg Settings) Settings {
@@ -270,6 +271,7 @@ type Environment struct {
 	DataDir       string              `json:"dataDir"`
 	Distributions []wine.Distribution `json:"distributions"`
 	Managed       ManagedState        `json:"managed"`
+	Jadeite       string              `json:"jadeite"` // installed version, "" when not downloaded
 }
 
 // ManagedState describes the Wine that Poem downloads itself.
@@ -290,6 +292,9 @@ func (s *Service) GetEnvironment() (Environment, error) {
 		return Environment{}, err
 	}
 	env := Environment{Runtimes: wine.DetectRuntimes(), Prefixes: wine.DetectPrefixes(), ModulesDir: modules, DataDir: data, Distributions: wine.Distributions}
+	if wine.JadeitePayload(compatDir(data)) != "" {
+		env.Jadeite = wine.JadeiteVersion
+	}
 	m := wine.Managed{Dir: filepath.Join(data, "wine")}
 	if id := m.Installed(); id != "" {
 		env.Managed = ManagedState{Installed: id, Binary: m.Binary(), Prefix: m.Prefix(), DXMT: wine.DXMTVersion(m.Binary())}
@@ -305,6 +310,13 @@ func (s *Service) GetEnvironment() (Environment, error) {
 		env.Modules = append(env.Modules, ModuleState{Name: m.name, Feature: m.feature, Present: err == nil && !info.IsDir() && info.Size() > 0})
 	}
 	return env, nil
+}
+
+// compatDir holds downloaded compatibility components such as jadeite.
+func compatDir(data string) string { return filepath.Join(data, "compat") }
+
+func installProgress(stage string, fraction float64) {
+	application.Get().Event.Emit("poem:install", InstallProgress{stage, fraction})
 }
 
 func managedWine() (wine.Managed, error) {
@@ -340,14 +352,15 @@ func (s *Service) InstallWine(id string) (ManagedState, error) {
 		}
 	}
 	s.mu.Unlock()
-	progress := func(stage string, fraction float64) {
-		application.Get().Event.Emit("poem:install", InstallProgress{stage, fraction})
-	}
-	if err := m.Install(context.Background(), wine.FindDistribution(id), progress); err != nil {
-		progress("", 0)
-		return ManagedState{}, err
+	progress := installProgress
+	err = m.Install(context.Background(), wine.FindDistribution(id), progress)
+	if err == nil {
+		_, err = wine.EnsureJadeite(context.Background(), compatDir(filepath.Dir(m.Dir)), progress)
 	}
 	progress("", 1)
+	if err != nil {
+		return ManagedState{}, err
+	}
 	return ManagedState{Installed: m.Installed(), Binary: m.Binary(), Prefix: m.Prefix(), DXMT: wine.DXMTVersion(m.Binary())}, nil
 }
 
@@ -500,6 +513,14 @@ func (s *Service) Start(cfg Settings) (Status, error) {
 	if err != nil {
 		return s.statusLocked(""), err
 	}
+	payload := ""
+	if cfg.UseJadeite {
+		payload, err = wine.EnsureJadeite(context.Background(), compatDir(dir), installProgress)
+		installProgress("", 1)
+		if err != nil {
+			return s.statusLocked(""), fmt.Errorf("Jadeite 准备失败：%w", err)
+		}
+	}
 	if err = applyLanguage(cfg, dir, len(s.sessions) > 0); err != nil {
 		return s.statusLocked(""), err
 	}
@@ -630,6 +651,11 @@ func (s *Service) Start(cfg Settings) (Status, error) {
 		// Without a late stage everything loads before the main thread resumes.
 		if len(plan.Early) == 0 {
 			plan.Early, plan.Late = plan.Late, nil
+		}
+		if payload != "" {
+			// Jadeite must patch the game before any other module initialises.
+			plan.Early = append([]string{win(payload)}, plan.Early...)
+			plan.Args = wine.JadeiteArgs
 		}
 		logf("game=%s prefix=%s early=%v late=%v proxyPort=%d", cfg.GamePath, wineCfg.Prefix, plan.Early, plan.Late, port)
 		run, launchErr := startHelper(wineCfg, helper, moduleDir, plan, logf)

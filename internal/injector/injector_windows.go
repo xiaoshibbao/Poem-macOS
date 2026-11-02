@@ -85,17 +85,18 @@ func Launch(exePath, dllPath string, extraEnv map[string]string) (*Process, erro
 }
 
 // LaunchWithDLLs loads each module before resuming the game's main thread.
-func LaunchWithDLLs(exePath string, dllPaths []string, extraEnv map[string]string) (*Process, error) {
-	return launchWithStages(exePath, dllPaths, nil, extraEnv, nil)
+// args are appended to the command line after the quoted executable.
+func LaunchWithDLLs(exePath string, dllPaths []string, extraEnv map[string]string, args ...string) (*Process, error) {
+	return launchWithStages(exePath, dllPaths, nil, extraEnv, nil, args)
 }
 
 // LaunchStaged keeps game patches early, then loads the proxy after the game
 // window is ready so the two modules do not initialise their hooks together.
-func LaunchStaged(exePath string, earlyDLLs, lateDLLs []string, extraEnv map[string]string) (*Process, error) {
-	return launchWithStages(exePath, earlyDLLs, lateDLLs, extraEnv, waitForGameWindow)
+func LaunchStaged(exePath string, earlyDLLs, lateDLLs []string, extraEnv map[string]string, args ...string) (*Process, error) {
+	return launchWithStages(exePath, earlyDLLs, lateDLLs, extraEnv, waitForGameWindow, args)
 }
 
-func launchWithStages(exePath string, dllPaths, lateDLLs []string, extraEnv map[string]string, ready func(windows.Handle, uint32) error) (*Process, error) {
+func launchWithStages(exePath string, dllPaths, lateDLLs []string, extraEnv map[string]string, ready func(windows.Handle, uint32) error, args []string) (*Process, error) {
 	absExe, err := filepath.Abs(exePath)
 	if err != nil {
 		return nil, fmt.Errorf("resolve exe: %w", err)
@@ -105,7 +106,11 @@ func launchWithStages(exePath string, dllPaths, lateDLLs []string, extraEnv map[
 	if err != nil {
 		return nil, fmt.Errorf("encode exe path: %w", err)
 	}
-	cmdLineUTF16, err := syscall.UTF16PtrFromString(`"` + absExe + `"`)
+	cmdLine := `"` + absExe + `"`
+	for _, arg := range args {
+		cmdLine += " " + syscall.EscapeArg(arg)
+	}
+	cmdLineUTF16, err := syscall.UTF16PtrFromString(cmdLine)
 	if err != nil {
 		return nil, fmt.Errorf("encode cmd line: %w", err)
 	}

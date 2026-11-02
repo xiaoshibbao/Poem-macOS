@@ -207,6 +207,7 @@ export function App() {
        </div>
        <div className="col">
         <div className="toggle-list">
+         <OptionRow title="Jadeite 兼容层" desc={env?.jadeite ? `v${env.jadeite} 已就绪 · 让游戏在 Wine 中正常启动` : '首次启动时从官方发布页下载 · 让游戏在 Wine 中正常启动'} control={<Switch checked={settings.useJadeite} onChange={v => change('useJadeite', v)} label="Jadeite 兼容层" disabled={locked} />} />
          <OptionRow title="Retina 模式" desc="以原生分辨率渲染，画面更清晰但更耗性能" control={<Switch checked={settings.retinaMode} onChange={v => change('retinaMode', v)} label="Retina 模式" disabled={locked} />} />
          <OptionRow title="左 ⌘ 作为 Ctrl" desc="游戏中左 Command 键按 Ctrl 处理" control={<Switch checked={settings.leftCommandIsCtrl} onChange={v => change('leftCommandIsCtrl', v)} label="左 Command 作为 Ctrl" disabled={locked} />} />
          <OptionRow title="Metal HUD" desc="在游戏画面上显示帧率与 GPU 信息" control={<Switch checked={settings.metalHUD} onChange={v => change('metalHUD', v)} label="Metal HUD" disabled={locked} />} />
