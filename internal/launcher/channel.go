@@ -231,17 +231,25 @@ func changeChannelINI(source []byte, channel string) []byte {
 	return []byte(strings.Join(out, newline))
 }
 
-// Wine shows Windows processes by their command line, which carries the
-// executable name; any StarRail.exe in any prefix counts as running.
+// Wine shows a Windows process with its Windows path (C:\… or Z:\…) as the
+// command; any StarRail.exe in any prefix counts as running.
 func gameIsRunning(game string) bool {
 	out, err := exec.Command("ps", "-axo", "command").Output()
 	if err != nil {
 		return true
 	}
-	name := strings.ToLower(filepath.Base(game))
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.Contains(strings.ToLower(line), name) {
-			return true
+	return windowsProcessListed(string(out), filepath.Base(game))
+}
+
+// Only a backslash path ending in the executable matches, so other command
+// lines that merely mention the name (such as a grep) do not.
+func windowsProcessListed(list, name string) bool {
+	needle := `\` + strings.ToLower(name)
+	for _, line := range strings.Split(strings.ToLower(list), "\n") {
+		for _, field := range strings.Fields(line) {
+			if strings.HasSuffix(strings.Trim(field, `"`), needle) {
+				return true
+			}
 		}
 	}
 	return false

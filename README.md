@@ -78,6 +78,7 @@ macOS 上没有原生的 Windows 版游戏，所以游戏通过 **Wine**（Cross
 - 不包含 Windows 专属的诊断与网络功能：WER 崩溃转储、线程跟踪、控制台记录、VPN 直连路由和系统代理入口桥接（NetworkEntry）。
 - 游戏自带的内核驱动无法在 Wine 中加载，所以默认启用 Jadeite 兼容层。首次启动时，Poem 会从 Jadeite 官方发布页下载 v4.1.0（不随本仓库分发），并按 Jadeite 的建议附加 `-disable-gpu-skinning` 启动参数：
   - 官服 / B服：与 Jadeite 原本的用法一致，由 `jadeite.exe` 启动游戏，Poem 不注入任何模块，只负责语言、渠道与运行环境。
+    游戏启动时会请求 `query_security_file`，mhypbase.dll 拿到这个安全文件后会在 Wine 下崩溃（`0xC0000005`）。因此 Poem 在官服 / B服启动期间会开一个只做过滤的本地代理：只拦截 `bhsr.com`、`starrails.com` 上的这一个请求并回空响应，其余请求原样发往官方服务器，其他域名直接透传。
   - 私服：由 `poem-helper.exe` 挂起创建游戏，先注入 `game_payload.dll`，再注入 Poem 的功能模块。
   - 可以在「运行环境」中关闭 Jadeite。
 

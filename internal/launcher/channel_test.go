@@ -148,3 +148,15 @@ func TestRealOfficialSDKArchiveLayout(t *testing.T) {
 	}
 	t.Logf("official Bili SDK: %d managed files", len(files))
 }
+
+func TestWindowsProcessListedIgnoresMentions(t *testing.T) {
+	list := "/usr/bin/grep StarRail.exe\nvim notes-starrail.exe.md\n"
+	if windowsProcessListed(list, "StarRail.exe") {
+		t.Fatal("a command merely mentioning the name was treated as the game")
+	}
+	for _, game := range []string{`C:\Program Files\Star Rail\Game\StarRail.exe -disable-gpu-skinning`, `Z:\Users\a\Games\StarRail.exe`, `"C:\Games\StarRail.exe"`} {
+		if !windowsProcessListed("init\n"+game+"\n", "StarRail.exe") {
+			t.Fatalf("Wine game process not detected: %s", game)
+		}
+	}
+}

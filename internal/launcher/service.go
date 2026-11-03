@@ -638,6 +638,22 @@ func (s *Service) Start(cfg Settings) (Status, error) {
 			plan.Env[hookEnvEc2bFile] = win(ec2b)
 			plan.Env[hookEnvWebTarget] = strings.TrimSpace(cfg.ServerURL)
 			plan.Late = append(plan.Late, win(hookPath))
+		} else if retail {
+			// Official clients connect to the real servers through a pass-through
+			// proxy that only withholds the security file mhypbase.dll crashes on.
+			if proxy, err = netproxy.NewFilter(); err != nil {
+				return s.statusLocked(""), err
+			}
+			certFile, certErr := proxy.CA().CertFile()
+			if certErr != nil {
+				return s.statusLocked(""), fmt.Errorf("代理证书准备失败：%w", certErr)
+			}
+			plan.TrustCert = win(certFile)
+			proxy.SetLogger(logf)
+			if port, err = proxy.Start(0); err != nil {
+				return s.statusLocked(""), err
+			}
+			setGameHTTPProxy(plan.Env, port)
 		}
 		plan.Registry = launchRegistry(cfg, port, dxmt)
 		var restore func() error

@@ -96,7 +96,14 @@ func compatEnvironment(cfg Settings, w wine.Config, dxmt bool) map[string]string
 
 // Crash reporters hang under Wine and the bundled Vulkan loader breaks Metal
 // translation; they are set aside while Poem's games run and restored afterwards.
-var setAsideFiles = []string{"StarRail_Data/upload_crash.exe", "StarRail_Data/Plugins/crashreport.exe", "StarRail_Data/Plugins/vulkan-1.dll"}
+// Current clients keep them under Plugins/x86_64; older layouts are kept for compatibility.
+var setAsideFiles = []string{
+	"StarRail_Data/upload_crash.exe",
+	"StarRail_Data/Plugins/x86_64/crashreport.exe",
+	"StarRail_Data/Plugins/x86_64/vulkan-1.dll",
+	"StarRail_Data/Plugins/crashreport.exe",
+	"StarRail_Data/Plugins/vulkan-1.dll",
+}
 
 const setAsideSuffix = ".poem-off"
 
@@ -105,6 +112,9 @@ func setAside(game string) {
 	for _, name := range setAsideFiles {
 		path := filepath.Join(dir, filepath.FromSlash(name))
 		if _, err := os.Stat(path + setAsideSuffix); err == nil {
+			continue
+		}
+		if _, err := os.Stat(path); err != nil {
 			continue
 		}
 		_ = os.Rename(path, path+setAsideSuffix)

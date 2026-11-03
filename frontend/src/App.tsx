@@ -152,21 +152,35 @@ export function App() {
  // 面板高度跟随内容，切换分类时以过渡动画改变高度，而不是跳变
  const panelContent = useRef<HTMLDivElement>(null)
  const [panelHeight, setPanelHeight] = useState(0)
+ // 高度过渡期间内容会比面板高，先隐藏滚动条，避免切换时闪一下
+ const [resizing, setResizing] = useState(false)
+ const lastHeight = useRef(0)
+ const resizeTimer = useRef(0)
  useLayoutEffect(() => {
   const content = panelContent.current
   if (!content) return
-  const measure = () => setPanelHeight(content.offsetHeight + 50)
+  const measure = () => {
+   const next = content.offsetHeight + 50
+   if (lastHeight.current && next !== lastHeight.current) {
+    setResizing(true)
+    window.clearTimeout(resizeTimer.current)
+    resizeTimer.current = window.setTimeout(() => setResizing(false), 340)
+   }
+   lastHeight.current = next
+   setPanelHeight(next)
+  }
   measure()
   const observer = new ResizeObserver(measure)
   observer.observe(content)
   return () => observer.disconnect()
  }, [view, panelShown])
+ useEffect(() => () => window.clearTimeout(resizeTimer.current), [])
 
  return <div className={`shell ${panelOpen ? 'panel-open' : ''}`}>
   <div className="art" aria-hidden="true" />
   <div className="scrim" aria-hidden="true" />
   <header className="titlebar">
-   <div className="brand" title={`Poem ${VERSION}`}><strong>Poem <span>Launcher</span></strong></div>
+   <div className="brand" title={`Poem ${VERSION}`}><strong>Poem Launcher</strong></div>
    <nav className="nav glass"><SelectionTrack className="tabs" role="tablist" active={tab}>{tabs.map(t => <button key={t.id} role="tab" id={`tab-${t.id}`} aria-selected={tab === t.id} aria-controls={t.id === 'home' ? undefined : 'panel-body'} className="tab" onClick={() => selectTab(t.id)}>{t.icon}{t.label}{t.state !== undefined && <span className={`tab-state ${t.state ? 'on' : ''}`} aria-label={t.state ? '已开启' : '已关闭'} />}</button>)}</SelectionTrack></nav>
    <div className="window-controls glass">
     {status.running > 0 && <span className="run-chip" title={status.ports.length ? `代理端口 ${status.ports.join(' / ')} · 游戏运行时关闭窗口只会最小化` : '游戏运行时关闭窗口只会最小化'}><i />运行中 {status.running}</span>}
@@ -174,7 +188,7 @@ export function App() {
   </header>
 
   <main className="stage">
-   {panelShown && <section className={`panel glass ${panelOpen ? '' : 'leaving'}`} style={panelHeight ? { height: panelHeight } : undefined}>
+   {panelShown && <section className={`panel glass ${panelOpen ? '' : 'leaving'} ${resizing ? 'resizing' : ''}`} style={panelHeight ? { height: panelHeight } : undefined}>
     <button className="panel-close icon-button" aria-label="收起设置" title="收起 · Esc" onClick={() => selectTab('home')}><X size={16} /></button>
     <div key={view} className="panel-body" id="panel-body" role="tabpanel" aria-labelledby={`tab-${view}`}><div ref={panelContent}>
      {view === 'env' && <>

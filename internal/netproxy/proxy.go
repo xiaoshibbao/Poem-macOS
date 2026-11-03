@@ -30,6 +30,10 @@ var redirectDomains = []string{
 	"zenlesszonezero.com",
 }
 
+// securityFileDomains are the dispatch hosts that serve query_security_file.
+// In filter mode only these are MITM'd; everything else is tunnelled.
+var securityFileDomains = []string{"bhsr.com", "starrails.com"}
+
 // Proxy is a loopback forwarding proxy that the game routes its traffic through
 // (configured as a named WinHTTP/WinINet/libcurl proxy by ProxyHook.dll).
 //
@@ -59,6 +63,7 @@ type Proxy struct {
 	cancel      context.CancelFunc
 	ec2bFile    string      // ProxyHook.dll hand-off: raw Ec2b blob from query_gateway ("" disables)
 	ec2bDone    atomic.Bool // capture is one-shot
+	filterOnly  bool        // no target: pass everything through except the security file
 }
 
 // New creates a Proxy that forwards intercepted traffic to targetURL.
@@ -69,15 +74,46 @@ func New(targetURL string, opts PatchOptions) (*Proxy, error) {
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
 		return nil, fmt.Errorf("invalid target URL %q", targetURL)
 	}
+	p, err := newProxy(u)
+	if err != nil {
+		return nil, err
+	}
+	if opts.RSAPatch {
+		p.rsaKey, err = NormalizeRSAKey(opts.RSAKey)
+		if err != nil {
+			p.cancel()
+			return nil, err
+		}
+	}
+	if opts.WebRedirect {
+		p.webHosts = opts.ResolvedWebHosts()
+	}
+	return p, nil
+}
+
+// NewFilter creates a Proxy for the official clients. Every request goes to
+// its original destination unchanged, except query_security_file, which gets
+// an empty response: the security file it serves makes mhypbase.dll crash
+// under Wine (Evernight-Launcher filters it the same way).
+func NewFilter() (*Proxy, error) {
+	p, err := newProxy(nil)
+	if err != nil {
+		return nil, err
+	}
+	p.filterOnly = true
+	return p, nil
+}
+
+func newProxy(target *url.URL) (*Proxy, error) {
 	ca, err := getCA()
 	if err != nil {
 		return nil, fmt.Errorf("CA setup: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	p := &Proxy{
+	return &Proxy{
 		ctx: ctx, cancel: cancel, connections: make(map[net.Conn]struct{}),
-		target: u,
+		target: target,
 		ca:     ca,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
@@ -92,18 +128,7 @@ func New(targetURL string, opts PatchOptions) (*Proxy, error) {
 				return http.ErrUseLastResponse
 			},
 		},
-	}
-	if opts.RSAPatch {
-		p.rsaKey, err = NormalizeRSAKey(opts.RSAKey)
-		if err != nil {
-			cancel()
-			return nil, err
-		}
-	}
-	if opts.WebRedirect {
-		p.webHosts = opts.ResolvedWebHosts()
-	}
-	return p, nil
+	}, nil
 }
 
 // CA exposes the proxy root CA so the caller can install it in the OS trust store.
@@ -219,7 +244,7 @@ func (p *Proxy) handle(conn net.Conn) {
 		// Wrap so any bytes bufio already read past the CONNECT line (e.g. a
 		// pipelined TLS ClientHello) are not lost by the TLS server / tunnel.
 		bc := &bufferedConn{r: br, Conn: conn}
-		if p.matchRedirect(hostname) {
+		if p.intercepts(hostname) {
 			p.log("proxy CONNECT intercepted host=%s", hostname)
 			p.mitm(bc, hostname)
 		} else {
@@ -243,8 +268,8 @@ func (p *Proxy) handle(conn net.Conn) {
 }
 
 // mitm performs a TLS man-in-the-middle on conn for hostname, then serves the
-// decrypted HTTP requests as a forwarding proxy (always to the target, since
-// only redirect domains are MITM'd).
+// decrypted HTTP requests as a forwarding proxy (to the target, or in filter
+// mode to the original host).
 func (p *Proxy) mitm(conn net.Conn, hostname string) {
 	cert, err := p.ca.leafCert(hostname)
 	if err != nil {
@@ -300,6 +325,12 @@ func (p *Proxy) forward(w io.Writer, req *http.Request, isTLS bool, mitmHost str
 		host = mitmHost
 	}
 	hostname := hostOnly(host)
+
+	if p.filterOnly && strings.HasSuffix(req.URL.Path, "/query_security_file") {
+		p.log("proxy filtered security file source=%s", hostname)
+		_, _ = io.WriteString(w, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+		return !req.Close
+	}
 
 	scheme := "http"
 	if isTLS {
@@ -385,11 +416,24 @@ func (p *Proxy) forward(w io.Writer, req *http.Request, isTLS bool, mitmHost str
 // matchRedirect reports whether hostname's traffic should be redirected to the
 // target server. The target's own host is never redirected (avoids loops).
 func (p *Proxy) matchRedirect(hostname string) bool {
-	h := strings.ToLower(hostname)
-	if h == strings.ToLower(p.target.Hostname()) {
+	if p.target == nil || strings.EqualFold(hostname, p.target.Hostname()) {
 		return false
 	}
-	for _, d := range redirectDomains {
+	return matchDomain(hostname, redirectDomains)
+}
+
+// intercepts reports whether a CONNECT tunnel to hostname is MITM'd.
+func (p *Proxy) intercepts(hostname string) bool {
+	if p.filterOnly {
+		return matchDomain(hostname, securityFileDomains)
+	}
+	return p.matchRedirect(hostname)
+}
+
+// matchDomain reports whether hostname is one of domains or a subdomain of one.
+func matchDomain(hostname string, domains []string) bool {
+	h := strings.ToLower(hostname)
+	for _, d := range domains {
 		if h == d || strings.HasSuffix(h, "."+d) {
 			return true
 		}
