@@ -2,9 +2,9 @@ package netproxy
 
 import "strings"
 
-// DefaultRSAKey is the RSA public key from the reference project (HSR-Patch).
+// DefaultRSAKey is the default public key used by Poem.
 // Used when RSAPatch is enabled and no custom key is set.
-const DefaultRSAKey = `<RSAKeyValue><Exponent>AQAB</Exponent><Modulus>qb76pH8/rX3p3+GDjfs8ZUGtBbQk7DJ5PdT1FIDL2UKbFQ4aorPmuPKA7qVEspV5XsLil6Ii+FzxrQuemgpuikzzjRUwklGy7iv1QcDIuB+b4+qQcecNGROT32ACgnIiKbrzAedehP9TbfNyXpGuaWIaWRVyvliktrb3td78/ljB+UJvrXOLkky5YopWdUn1kp4LQ70KsjbG5ocjMyIGk+RdmmgNJRduEIaT//gPNKH2TjPABaaEPb8FgCgTQ2yimt8NsxZzH8ZpmQzFievyU5Nlz4KxlvRypQbwNe0paQ7pOefhLSJ9NEanxqyzajgildVtf9ozftRnXiNy+EQ3CQ==</Modulus></RSAKeyValue>`
+const DefaultRSAKey = `<RSAKeyValue><Modulus>mzu3w4uXJtssxWuVGhakeLP9DNlYERlwWqFyaQGWCYceypvvPAZ1TMDAgdTXQ+F5bCCzmAxarm1Ls9LL4MY8dirJYHtCB4e86hOUHfVQ6zV+OS/B45/ngz6clWewOml8ZOCKfLodrVLD08ENBdx3oVuJqU/L/4y7OOorIyTqbbSTu/0CWxfK8M3NkH2wX7CZZRT4Rt8X2SUsmN3rmRrZCNfPpDJ0t23qDke5OEz7hOBbOOAnELUqGV2FDGieSNeYtdsiUuAn1b/vdNADkJ5LO2m3gWWpNvrbdkMBW6J6Zr/LERvi7/Aa/TpnaVvmdkHiE7+/q1Ik9PjxDN6SV9oG5w==</Modulus><Exponent>AQAB</Exponent></RSAKeyValue>`
 
 // DefaultWebHosts is the WebRedirectHosts list from the reference project.
 // URL rewriting in response bodies is applied to these exact hostnames only.

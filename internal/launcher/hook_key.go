@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/xml"
 	"fmt"
 	"poem/internal/netproxy"
 	"unicode/utf16"
@@ -19,6 +18,9 @@ const (
 	hookEnvEc2bFile  = "CYRENE_EC2B_FILE"
 	hookEnvWebTarget = "CYRENE_WEB_TARGET"
 )
+
+// Original modulus in the prebuilt DLL, independent of the selected default.
+const hookRSATemplateModulus = "qb76pH8/rX3p3+GDjfs8ZUGtBbQk7DJ5PdT1FIDL2UKbFQ4aorPmuPKA7qVEspV5XsLil6Ii+FzxrQuemgpuikzzjRUwklGy7iv1QcDIuB+b4+qQcecNGROT32ACgnIiKbrzAedehP9TbfNyXpGuaWIaWRVyvliktrb3td78/ljB+UJvrXOLkky5YopWdUn1kp4LQ70KsjbG5ocjMyIGk+RdmmgNJRduEIaT//gPNKH2TjPABaaEPb8FgCgTQ2yimt8NsxZzH8ZpmQzFievyU5Nlz4KxlvRypQbwNe0paQ7pOefhLSJ9NEanxqyzajgildVtf9ozftRnXiNy+EQ3CQ=="
 
 func wideBytes(s string) []byte {
 	chars := utf16.Encode([]rune(s))
@@ -46,13 +48,7 @@ func configureHookRSA(hook []byte, input string) ([]byte, error) {
 	if !ok || key.N.BitLen() != 2048 || key.E != 65537 {
 		return nil, fmt.Errorf("当前代理模块的 SDK 密钥替换支持 2048 位 RSA 公钥，指数须为 65537 (AQAB)")
 	}
-	var template struct {
-		Modulus string `xml:"Modulus"`
-	}
-	if err := xml.Unmarshal([]byte(netproxy.DefaultRSAKey), &template); err != nil {
-		return nil, err
-	}
-	old := wideBytes(template.Modulus)
+	old := wideBytes(hookRSATemplateModulus)
 	replacement := wideBytes(base64.StdEncoding.EncodeToString(key.N.Bytes()))
 	if len(old) != len(replacement) || bytes.Count(hook, old) != 1 {
 		return nil, fmt.Errorf("代理模块中的 RSA 模板不匹配，无法安全应用自定义密钥")
