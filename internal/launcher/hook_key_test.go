@@ -22,8 +22,8 @@ func TestHookKeyMatchesProxyKeyWithoutChangingLayout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(original, hook) {
-		t.Fatal("default key changed original DLL")
+	if bytes.Equal(original, hook) {
+		t.Fatal("new default key was not applied")
 	}
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -39,8 +39,11 @@ func TestHookKeyMatchesProxyKeyWithoutChangingLayout(t *testing.T) {
 		Modulus string `xml:"Modulus"`
 	}
 	xml.Unmarshal([]byte(netproxy.DefaultRSAKey), &old)
-	start := bytes.Index(hook, wideBytes(old.Modulus))
-	end := start + len(wideBytes(old.Modulus))
+	start := bytes.Index(hook, wideBytes(hookRSATemplateModulus))
+	end := start + len(wideBytes(hookRSATemplateModulus))
+	if !bytes.Equal(original[start:end], wideBytes(old.Modulus)) {
+		t.Fatal("default SDK key differs from proxy key")
+	}
 	if len(patched) != len(hook) || !bytes.Equal(patched[:start], hook[:start]) || !bytes.Equal(patched[end:], hook[end:]) {
 		t.Fatal("patch modified data outside modulus")
 	}
