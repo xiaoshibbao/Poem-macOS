@@ -39,11 +39,14 @@ func applyRegistry(values []helperproto.RegValue) error {
 			}
 			continue
 		}
-		k, _, err := registry.CreateKey(root, path, registry.SET_VALUE)
+		k, _, err := registry.CreateKey(root, path, registry.QUERY_VALUE|registry.SET_VALUE)
 		if err != nil {
 			return fmt.Errorf("%s: %w", v.Key, err)
 		}
 		switch v.Kind {
+		case helperproto.RegPrepend:
+			list, _, _ := k.GetStringsValue(v.Name) // missing or not REG_MULTI_SZ: start empty
+			err = k.SetStringsValue(v.Name, helperproto.PrependEntry(list, v.String))
 		case helperproto.RegString:
 			err = k.SetStringValue(v.Name, v.String)
 		case helperproto.RegDWord:

@@ -58,6 +58,43 @@ func launchRegistry(cfg Settings, proxyPort int, dxmt bool) []helperproto.RegVal
 	return values
 }
 
+const (
+	fontsKey        = `HKLM\Software\Microsoft\Windows NT\CurrentVersion\Fonts`
+	fontSubstitutes = `HKLM\Software\Microsoft\Windows NT\CurrentVersion\FontSubstitutes`
+	fontSystemLink  = `HKLM\Software\Microsoft\Windows NT\CurrentVersion\FontLink\SystemLink`
+)
+
+// Chinese UI fonts that Windows programs ask for by name, and the file that
+// provides each one when it is installed in the prefix.
+var cjkFontNames = []struct{ face, file string }{
+	{"Microsoft YaHei", "msyh.ttc"},
+	{"Microsoft YaHei UI", "msyh.ttc"},
+	{"Microsoft YaHei Bold", "msyhbd.ttc"},
+	{"SimSun", "simsun.ttc"},
+	{"NSimSun", "simsun.ttc"},
+	{"SimHei", "simhei.ttf"},
+}
+
+// Default UI faces that fall back to the CJK font for characters they lack.
+var cjkLinkedFaces = []string{"Tahoma", "Microsoft Sans Serif", "Arial", "Segoe UI"}
+
+// cjkFontRegistry registers the copied CJK font, maps Chinese font names that
+// the prefix does not have to it, and adds it as the first fallback of the
+// default UI faces. fonts lists the prefix's font files, lowercased.
+func cjkFontRegistry(fonts map[string]bool) []helperproto.RegValue {
+	values := []helperproto.RegValue{regString(fontsKey, wine.CJKFontFace+" (TrueType)", wine.CJKFontFile)}
+	for _, f := range cjkFontNames {
+		if !fonts[f.file] {
+			values = append(values, regString(fontSubstitutes, f.face, wine.CJKFontFace))
+		}
+	}
+	link := wine.CJKFontFile + "," + wine.CJKFontFace
+	for _, face := range cjkLinkedFaces {
+		values = append(values, helperproto.RegValue{Key: fontSystemLink, Name: face, Kind: helperproto.RegPrepend, String: link})
+	}
+	return values
+}
+
 // proxyOffRegistry undoes the WinINet proxy once no game in the prefix needs it.
 func proxyOffRegistry() []helperproto.RegValue {
 	return []helperproto.RegValue{{Key: internetSettings, Name: "ProxyEnable", Kind: helperproto.RegDWord, DWord: 0}}
