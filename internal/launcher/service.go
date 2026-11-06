@@ -656,6 +656,11 @@ func (s *Service) Start(cfg Settings) (Status, error) {
 			setGameHTTPProxy(plan.Env, port)
 		}
 		plan.Registry = launchRegistry(cfg, port, dxmt)
+		if placed, fontErr := wine.PlaceCJKFont(wineCfg.Prefix); fontErr != nil {
+			logf("CJK font setup failed: %v", fontErr)
+		} else if placed {
+			plan.Registry = append(plan.Registry, cjkFontRegistry(wine.PrefixFonts(wineCfg.Prefix))...)
+		}
 		var restore func() error
 		if featuresOn {
 			restore, err = stageConfig(filepath.Join(filepath.Dir(cfg.GamePath), "StarRail_Data", "config.ini"), cfg)

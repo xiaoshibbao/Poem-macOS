@@ -4,6 +4,8 @@
 // on stdout. All paths in a Plan are Windows paths as seen inside the prefix.
 package helperproto
 
+import "strings"
+
 // Plan describes one game launch.
 type Plan struct {
 	Game string   `json:"game"`
@@ -29,7 +31,21 @@ const (
 	RegDWord  = "dword"
 	RegBinary = "binary"
 	RegDelete = "delete" // remove the value if present
+	// RegPrepend makes String the first entry of a REG_MULTI_SZ value and
+	// keeps the existing entries.
+	RegPrepend = "prepend"
 )
+
+// PrependEntry puts entry first in list, dropping copies of it (ignoring case).
+func PrependEntry(list []string, entry string) []string {
+	result := []string{entry}
+	for _, item := range list {
+		if !strings.EqualFold(item, entry) {
+			result = append(result, item)
+		}
+	}
+	return result
+}
 
 // RegValue is one value under HKCU or HKLM. Key starts with HKCU\ or HKLM\.
 type RegValue struct {
